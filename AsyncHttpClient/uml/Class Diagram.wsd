@@ -1,0 +1,13 @@
+@startuml InternalHttpAsyncClient
+class InternalHttpAsyncClient{
+    PoolingNHttpClientConnectionManager connmgr
+    Thread reactorThread
+}
+@enduml
+
+@startuml class
+class InternalHttpAsyncClient{
+    PoolingNHttpClientConnectionManager connmgr
+    Thread reactorThread
+}
+@enduml
