@@ -11,3 +11,53 @@ class InternalHttpAsyncClient{
     Thread reactorThread
 }
 @enduml
+
+@startuml
+skinparam monochrome true
+skinparam ParticipantBackgroundColor #E0E0E0
+hide footbox
+
+participant InternalHttpAsyncClient as client
+participant reactorThread
+participant InternalIODispatch as ioEventDispatch
+participant PoolingNHttpClientConnectionManager as connmgr
+participant DefaultConnectingIOReactor as connIOReactor
+participant "DefaultConnectingIOReactor's\nSelector" as masterSelector
+participant Queue<SessionRequestImpl> as requestQueue
+participant workerThread_N
+participant BaseIOReactor as baseIOReactor
+
+-> client: start()
+activate client
+client ->> reactorThread: start()
+activate reactorThread
+<-- client: return
+reactorThread -> ioEventDispatch: new Instance
+activate ioEventDispatch
+reactorThread -> connmgr: execute(InternalIODispatch)
+activate connmgr
+connmgr -> connIOReactor: execute(InternalIODispatch)
+activate connIOReactor
+connIOReactor ->> workerThread_N: start()
+loop infinited
+connIOReactor -> masterSelector: select()
+connIOReactor <- masterSelector: return: readyCount
+|||
+connIOReactor -> connIOReactor: processEvents(readyCount)
+    activate connIOReactor
+    connIOReactor -> connIOReactor: processSessionRequests()
+        activate connIOReactor
+        requestQueue
+        deactivate connIOReactor
+        connIOReactor -> masterSelector: selectedKeys()
+        connIOReactor <- masterSelector: return: Set<SelectionKey>
+        connIOReactor -> connIOReactor: processEvent(SelectionKey)
+            activate connIOReactor
+            deactivate connIOReactor
+        connIOReactor -> connIOReactor: processTimeouts(SelectionKeys)
+    deactivate connIOReactor
+connIOReactor -> connIOReactor: handleExceptions
+end
+
+
+@enduml
