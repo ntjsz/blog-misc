@@ -1,4 +1,7 @@
 @startuml ClassDiagram
+skinparam monochrome true
+skinparam ParticipantBackgroundColor #E0E0E0
+
 class InternalHttpAsyncClient {
     PoolingNHttpClientConnectionManager connmgr
     Thread reactorThread
@@ -48,45 +51,71 @@ CPool ..> DefaultConnectingIOReactor
 
 @enduml
 
-@startuml SequenceDiagram Main
+
+
+
+
+
+
+
+
+@startuml SequenceDiagram Main Thread
 skinparam monochrome true
 skinparam ParticipantBackgroundColor #E0E0E0
 hide footbox
+
+participant InternalHttpAsyncClient as client
+participant reactorThread
+participant "PoolingNHttpClient\nConnectionManager" as connmgr
 
 -> client: start()
 activate client
 client ->> reactorThread: start()
-<-- client: return
-
+-> client: execute(HttpGet)
+client -> connmgr: requestConnection(args)
 
 @enduml
 
-@startuml
+
+
+
+
+
+
+
+
+
+
+
+@startuml SequenceDiagram Reactor Thread
 skinparam monochrome true
 skinparam ParticipantBackgroundColor #E0E0E0
 hide footbox
 
+'注释了很多次要步骤
+
 participant "DefaultConnectingIOReactor's\nSelector" as masterSelector
-participant InternalHttpAsyncClient as client
+'participant InternalHttpAsyncClient as client
 participant reactorThread
-participant InternalIODispatch as ioEventDispatch
-participant PoolingNHttpClientConnectionManager as connmgr
-participant DefaultConnectingIOReactor as connIOReactor
+'participant InternalIODispatch as ioEventDispatch
+'participant "PoolingNHttpClient\nConnectionManager" as connmgr
+participant "DefaultConnecting\nIOReactor" as connIOReactor
 participant "Queue<SessionRequestImpl>" as requestQueue
 participant workerThread_N
 participant BaseIOReactor as baseIOReactor
 participant "BaseIOReactor's\nSelector" as slaveSelector
 
--> client: start()
-activate client
-client ->> reactorThread: start()
+'-> client: start()
+'activate client
+->> reactorThread: start()
 activate reactorThread
-<-- client: return
-reactorThread -> ioEventDispatch: new Instance
-activate ioEventDispatch
-reactorThread -> connmgr: execute(InternalIODispatch)
-activate connmgr
-connmgr -> connIOReactor: execute(InternalIODispatch)
+'<-- client: return
+'reactorThread -> ioEventDispatch: new Instance
+'activate ioEventDispatch
+'reactorThread -> connmgr: execute(InternalIODispatch)
+'activate connmgr
+'connmgr -> connIOReactor: execute(InternalIODispatch)
+reactorThread -> connIOReactor: execute(InternalIODispatch)
 activate connIOReactor
 connIOReactor ->> workerThread_N: start()
 loop infinited
@@ -109,11 +138,60 @@ loop infinited
             deactivate connIOReactor
         connIOReactor -> masterSelector: selectedKeys()
         connIOReactor <- masterSelector: return: Set<SelectionKey>
+        note right of connIOReactor #ffeeee: processEvent()
         connIOReactor -> connIOReactor: connectable channel.finishConnect()\nkey.cancel()
-        connIOReactor -> connIOReactor: processTimeouts(SelectionKeys)
+'        connIOReactor -> connIOReactor: processTimeouts(SelectionKeys)
         deactivate connIOReactor
-    connIOReactor -> connIOReactor: handleExceptions
+'    connIOReactor -> connIOReactor: handleExceptions
 end
 
+@enduml
+
+
+
+
+
+
+
+
+
+
+@startuml SequenceDiagram Worker Thread
+skinparam monochrome true
+skinparam ParticipantBackgroundColor #E0E0E0
+hide footbox
+
+participant workerThread_N
+participant BaseIOReactor as baseIOReactor
+participant InternalIODispatch as ioEventDispatch
+participant "BaseIOReactor's\nSelector" as slaveSelector
+
+->> workerThread_N: start()
+workerThread_N -> baseIOReactor: execute(InternalIODispatch)
+activate baseIOReactor
+loop infinited
+    baseIOReactor -> slaveSelector: select()
+    ->> slaveSelector: wakeup()
+    baseIOReactor <- slaveSelector: return: readyCount
+
+    
+    baseIOReactor -> baseIOReactor: processEvents()
+        activate baseIOReactor
+        deactivate baseIOReactor
+
+    |||
+
+    baseIOReactor -> baseIOReactor: processNewChannels()
+        activate baseIOReactor
+        deactivate baseIOReactor
+
+    |||
+
+    baseIOReactor -> baseIOReactor: processPendingInterestOps()
+        activate baseIOReactor
+        deactivate baseIOReactor
+        
+end
+deactivate baseIOReactor
 
 @enduml
