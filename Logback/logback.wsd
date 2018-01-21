@@ -1,0 +1,152 @@
+@startuml SequenceDiagram LoggerFactory.getLogger()
+skinparam monochrome true
+skinparam ParticipantBackgroundColor #E0E0E0
+hide footbox
+
+
+participant LoggerFactory@slf4j as factory
+participant StaticLoggerBinder@logback as binder
+
+-> factory: getLogger(XX.class)
+activate factory
+    factory -> factory: getILoggerFactory()
+    activate factory
+        factory -> factory: bind()
+        activate factory
+            factory -> factory: findPossibleStaticLoggerBinderPathSet()
+            note left #ffeeee
+                find org/slf4j/impl/StaticLoggerBinder.class
+                by classloader.getResources()
+            end note
+
+            factory -> binder: getSingleton()
+            activate binder
+                binder -> binder: init() and aotoConfig()
+                note right #ffeeee
+                    First one takes effect.
+                    logback.configurationFile
+                    logback-test.xml
+                    logback.groovy
+                    logback.xml
+
+                    Read configuration and initialize appenders.
+                    Start asyncAppender's worker thread.
+                end note
+            binder -> factory
+            deactivate binder
+        deactivate factory
+    deactivate factory
+<- factory: return: Logger
+deactivate factory
+
+
+@enduml
+
+
+@startuml ClassDiagram Logger
+skinparam monochrome true
+skinparam ParticipantBackgroundColor #E0E0E0
+
+interface ILoggerFactory
+
+class LoggerContext {
+    Logger root
+    ConcurrentHashMap loggerCache
+}
+
+class Logger {
+    String name          // "root" or "ClassName" or others
+    Logger parent
+    CopyOnWriteArrayList<Logger> childrenList
+    LoggerContext LoggerContext
+    AppenderAttachableImpl<ILoggingEvent> aai
+}
+
+class AppenderAttachableImpl<E> {
+    COWArrayList<Appender<E>> appenderList
+}
+
+class COWArrayList<E> {
+    CopyOnWriteArrayList<E> underlyingList
+}
+
+interface Appender<E>
+class RollingFileAppender {
+    TriggeringPolicy triggeringPolicy
+    RollingPolicy rollingPolicy
+    Encoder encoder
+}
+
+class Encoder {
+    String pattern   // "%d{yyyy-MM-dd HH:mm:ss.SSS} xxxxx"
+    Layout layout
+}
+
+class Layout {
+    String pattern
+    Converter head
+}
+
+abstract class Converter {
+    Converter next
+}
+
+class DateConverter
+class LiteralConverter
+class ClassOfCallerConverter
+class LineOfCallerConverter
+
+LoggerContext --|> ILoggerFactory
+LoggerContext ..> Logger
+Logger ..> LoggerContext
+Logger ..> AppenderAttachableImpl
+Logger ..> Appender
+AppenderAttachableImpl ..> COWArrayList
+Appender <|-- RollingFileAppender
+RollingFileAppender ..> Encoder
+Encoder ..> Layout
+Layout ..> Converter
+Converter <.. Converter
+Converter <|-- DateConverter
+Converter <|-- LiteralConverter
+Converter <|-- ClassOfCallerConverter
+Converter <|-- LineOfCallerConverter
+
+@enduml
+
+
+
+
+@startuml SequenceDiagram Logger.info()
+skinparam monochrome true
+skinparam ParticipantBackgroundColor #E0E0E0
+hide footbox
+
+participant thisLogger
+participant rootLogger
+participant AppenderAttachableImpl
+participant COWArrayList
+participant Appender
+
+-> thisLogger: info(msg)
+activate thisLogger
+    thisLogger -> rootLogger: callAppenders(event)
+    activate rootLogger
+        rootLogger -> AppenderAttachableImpl: appendLoopOnAppenders(event)
+        activate AppenderAttachableImpl
+            AppenderAttachableImpl -> COWArrayList: foreach()
+            activate COWArrayList
+                COWArrayList -> Appender: doAppend(event)
+                activate Appender
+                COWArrayList <- Appender
+                deactivate Appender
+            AppenderAttachableImpl <- COWArrayList
+            deactivate COWArrayList
+        rootLogger <- AppenderAttachableImpl
+        deactivate AppenderAttachableImpl
+    thisLogger <- rootLogger
+    deactivate rootLogger
+<- thisLogger
+deactivate thisLogger
+
+@enduml
